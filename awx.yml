@@ -1,0 +1,59 @@
+- name: AWX
+  gather_facts: no
+  hosts: localhost
+  vars:
+    awx:
+      work_dir: /opt/awx
+  tasks:
+    - name: Install yum
+      become: yes
+      yum:
+        name:
+          - docker
+
+    - name: Docker start
+      become: yes
+      systemd:
+        name: docker
+        enabled: yes
+        state: started
+
+    - name: Install docker with pip
+      become: yes
+      pip:
+        name:
+          - docker
+          - docker-compose
+
+    - block:
+      - stat:
+          path: "{{ awx.work_dir }}"
+          get_checksum: no
+        register: awx_st
+
+      - git:
+          repo: https://github.com/ansible/awx
+          dest: "{{ awx.work_dir }}"
+        when: not awx_st.stat.exists
+
+      - name: Create /opt/pgdocker directory
+        file:
+          state: directory
+          path: /opt/pgdocker
+
+      - name: Create /opt/awxcompose directory
+        file:
+          state: directory
+          path: /opt/awxcompose
+
+      - name: Rewrite {{ awx.work_dir }}/installer/inventory
+        replace:
+          path: "{{ awx.work_dir }}/installer/inventory"
+          regexp: 'tmp'
+          replace: 'opt'
+
+      - name: Launch awx
+        command: ansible-playbook -i inventory install.yml
+        args:
+          chdir: "{{ awx.work_dir }}/installer"
+      become: yes
